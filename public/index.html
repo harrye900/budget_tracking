@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Budget Tracking</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#4fc3f7">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Budget Tracking">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f23; color: #e0e0e0; min-height: 100vh; padding: 20px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    h1 { text-align: center; margin-bottom: 30px; color: #4fc3f7; font-size: 2rem; }
+
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 30px; }
+    .card { background: #1a1a3e; padding: 24px; border-radius: 12px; text-align: center; }
+    .card h3 { font-size: 0.85rem; text-transform: uppercase; color: #888; margin-bottom: 8px; }
+    .card .amount { font-size: 1.8rem; font-weight: bold; }
+    .card.income .amount { color: #4fc3f7; }
+    .card.spent .amount { color: #ef5350; }
+    .card.savings .amount { color: #66bb6a; }
+
+    .sections { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+    .section { background: #1a1a3e; padding: 24px; border-radius: 12px; }
+    .section h2 { font-size: 1.1rem; margin-bottom: 16px; color: #4fc3f7; }
+
+    form { display: flex; flex-direction: column; gap: 10px; }
+    input, select { padding: 10px; border-radius: 8px; border: 1px solid #333; background: #0f0f23; color: #e0e0e0; font-size: 0.9rem; }
+    button { padding: 10px 20px; border-radius: 8px; border: none; background: #4fc3f7; color: #000; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
+    button:hover { background: #81d4fa; }
+
+    .chart-container { margin-bottom: 30px; background: #1a1a3e; padding: 24px; border-radius: 12px; }
+    .chart-container h2 { font-size: 1.1rem; margin-bottom: 16px; color: #4fc3f7; }
+    .chart-bar { display: flex; align-items: center; margin-bottom: 12px; }
+    .chart-bar .label { width: 160px; font-size: 0.85rem; }
+    .chart-bar .bar-bg { flex: 1; height: 24px; background: #2a2a4a; border-radius: 6px; overflow: hidden; position: relative; }
+    .chart-bar .bar-fill { height: 100%; border-radius: 6px; transition: width 0.3s; }
+    .chart-bar .bar-amount { position: absolute; right: 8px; top: 3px; font-size: 0.75rem; color: #fff; }
+
+    .expenses-table { width: 100%; border-collapse: collapse; background: #1a1a3e; border-radius: 12px; overflow: hidden; }
+    .expenses-table th { background: #252550; padding: 12px; text-align: left; font-size: 0.8rem; text-transform: uppercase; color: #888; }
+    .expenses-table td { padding: 12px; border-top: 1px solid #2a2a4a; }
+    .expenses-table .del-btn { background: #ef5350; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+    .paid-check { width: 20px; height: 20px; cursor: pointer; accent-color: #66bb6a; }
+    .row-paid { opacity: 0.5; text-decoration: line-through; }
+
+    @media (max-width: 700px) { .cards, .sections { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>💰 Budget Tracking</h1>
+    <div class="cards">
+      <div class="card income"><h3>Monthly Income</h3><div class="amount" id="income">$0</div></div>
+      <div class="card spent"><h3>Total Spent</h3><div class="amount" id="spent">$0</div></div>
+      <div class="card savings"><h3>Money Left</h3><div class="amount" id="savings">$0</div></div>
+    </div>
+
+    <div class="sections">
+      <div class="section">
+        <h2>Add Expense</h2>
+        <form id="expense-form">
+          <select id="category" required>
+            <option value="">Select Category</option>
+            <option>Mortgage</option>
+            <optgroup label="Bills">
+              <option>Water</option>
+              <option>Gas</option>
+              <option>Electricity</option>
+              <option>Car Insurance</option>
+              <option>Internet</option>
+              <option>Wireless</option>
+              <option>Car Note</option>
+              <option>Gym</option>
+              <option>Credit Card - Chase</option>
+              <option>Credit Card - Navy</option>
+              <option>Credit Card - Capital One 1</option>
+              <option>Credit Card - Capital One 2</option>
+              <option>Credit Card - Credit One 1</option>
+              <option>Credit Card - Credit One 2</option>
+              <option>Credit Card - Premier 1</option>
+              <option>Credit Card - Premier 2</option>
+              <option>Camera</option>
+              <option>Grass Mower</option>
+              <option>Motor Gas</option>
+            </optgroup>
+            <option>Food</option>
+            <option>Transport</option><option>Entertainment</option>
+            <option>Shopping</option><option>Subscriptions</option><option>Other</option>
+          </select>
+          <input type="text" id="description" placeholder="Description (optional)">
+          <input type="number" id="amount" placeholder="Amount ($)" step="0.01" required>
+          <input type="date" id="date" required>
+          <button type="submit">Add Expense</button>
+        </form>
+      </div>
+      <div class="section">
+        <h2>Spending Chart</h2>
+        <div id="chart"></div>
+      </div>
+    </div>
+
+    <h2 style="margin-bottom:12px; color:#4fc3f7;">Expenses</h2>
+    <table class="expenses-table">
+      <thead><tr><th>Paid</th><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th></th></tr></thead>
+      <tbody id="expenses-body"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const fmt = n => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const colors = ["#4fc3f7","#ef5350","#66bb6a","#ffa726","#ab47bc","#26c6da","#ec407a","#8d6e63","#78909c","#d4e157"];
+
+    async function load() {
+      const res = await fetch("/api/dashboard");
+      const data = await res.json();
+
+      $("income").textContent = fmt(data.income);
+      $("spent").textContent = fmt(data.totalSpent);
+      $("savings").textContent = fmt(data.savings);
+
+      // Chart
+      const max = data.byCategory.length ? Math.max(...data.byCategory.map(c => c.total)) : 1;
+      $("chart").innerHTML = data.byCategory.map((c, i) => `
+        <div class="chart-bar">
+          <div class="label">${c.category}</div>
+          <div class="bar-bg">
+            <div class="bar-fill" style="width:${(c.total/max*100).toFixed(1)}%;background:${colors[i % colors.length]}"></div>
+            <span class="bar-amount">${fmt(c.total)}</span>
+          </div>
+        </div>
+      `).join("") || "<p style='color:#888'>No expenses yet</p>";
+
+      // Table
+      $("expenses-body").innerHTML = data.expenses.map(e => `
+        <tr class="${e.paid ? 'row-paid' : ''}">
+          <td><input type="checkbox" class="paid-check" ${e.paid ? 'checked' : ''} onchange="toggle(${e.id})"></td>
+          <td>${e.date}</td><td>${e.category}</td><td>${e.description}</td>
+          <td>${fmt(e.amount)}</td><td><button class="del-btn" onclick="del(${e.id})">✕</button></td>
+        </tr>
+      `).join("");
+    }
+
+    $("expense-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await fetch("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: $("category").value,
+          description: $("description").value,
+          amount: parseFloat($("amount").value),
+          date: $("date").value
+        })
+      });
+      $("expense-form").reset();
+      $("date").value = new Date().toISOString().slice(0, 10);
+      load();
+    });
+
+    async function toggle(id) {
+      await fetch(`/api/expenses/${id}/toggle`, { method: "PATCH" });
+      load();
+    }
+
+    async function del(id) {
+      await fetch(`/api/expenses/${id}`, { method: "DELETE" });
+      load();
+    }
+
+    $("date").value = new Date().toISOString().slice(0, 10);
+    load();
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+  </script>
+</body>
+</html>
