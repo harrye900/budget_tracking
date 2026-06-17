@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const app = express();
-const DB_PATH = path.join(__dirname, "budget.db");
+const DB_PATH = process.env.RENDER ? path.join("/tmp", "budget.db") : path.join(__dirname, "budget.db");
 
 let db;
 
@@ -74,7 +74,8 @@ async function start() {
     res.json({ success: true });
   });
 
-  app.listen(3000, () => console.log("Budget Tracker running at http://localhost:3000"));
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log(`Budget Tracking running on port ${PORT}`));
 }
 
 function save() {
