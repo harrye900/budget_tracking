@@ -344,9 +344,8 @@
 
     $("expense-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const paycheckId = currentPaycheckId;
-      if (!paycheckId) { alert("Select a paycheck tab first"); return; }
-      await fetch("/api/expenses", {
+      if (!currentPaycheckId) { alert("Select a paycheck tab first"); return; }
+      const res = await fetch("/api/expenses", {
         method: "POST",
         headers: headers(),
         body: JSON.stringify({
@@ -354,22 +353,23 @@
           description: $("description").value,
           amount: parseFloat($("amount").value),
           date: $("date").value,
-          paycheck_id: paycheckId
+          paycheck_id: currentPaycheckId
         })
       });
+      if (!res.ok) { alert("Failed to add expense"); return; }
       $("expense-form").reset();
       $("date").value = new Date().toISOString().slice(0, 10);
-      load();
+      loadPaycheck(currentPaycheckId);
     });
 
     async function toggle(id) {
       await fetch(`/api/expenses/${id}/toggle`, { method: "PATCH", headers: headers() });
-      load();
+      loadPaycheck(currentPaycheckId);
     }
 
     async function del(id) {
       await fetch(`/api/expenses/${id}`, { method: "DELETE", headers: headers() });
-      load();
+      loadPaycheck(currentPaycheckId);
     }
 
     // Init

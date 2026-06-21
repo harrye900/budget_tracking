@@ -168,11 +168,11 @@ async function start() {
     const paycheck = (await pool.query("SELECT * FROM paychecks WHERE id=$1 AND user_id=$2", [req.params.paycheckId, req.userId])).rows[0];
     if (!paycheck) return res.status(404).json({ error: "Paycheck not found" });
 
-    const expenses = (await pool.query("SELECT * FROM expenses WHERE paycheck_id=$1 AND user_id=$2 ORDER BY date DESC", [req.params.paycheckId, req.userId])).rows;
+    const expenses = (await pool.query("SELECT * FROM expenses WHERE paycheck_id=$1 AND user_id=$2 ORDER BY date DESC, id DESC", [req.params.paycheckId, req.userId])).rows;
     const catRows = (await pool.query("SELECT category, SUM(amount) as total FROM expenses WHERE paycheck_id=$1 AND user_id=$2 GROUP BY category ORDER BY total DESC", [req.params.paycheckId, req.userId])).rows;
 
     const totalSpent = catRows.reduce((s, r) => s + parseFloat(r.total), 0);
-    res.json({ paycheck, totalSpent, moneyLeft: paycheck.amount - totalSpent, expenses, byCategory: catRows });
+    res.json({ paycheck, totalSpent, moneyLeft: parseFloat(paycheck.amount) - totalSpent, expenses, byCategory: catRows });
   });
 
   // Overall dashboard
