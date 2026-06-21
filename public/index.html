@@ -78,6 +78,14 @@
     .row-paid { opacity: 0.4; }
     .row-paid td { text-decoration: line-through; }
 
+    .paycheck-tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .paycheck-tab { padding: 12px 20px; border-radius: 10px; border: 1px solid #2a2a4a; background: #12122b; color: #888; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+    .paycheck-tab.active { background: linear-gradient(135deg, #4fc3f7, #2196f3); color: #fff; border-color: #4fc3f7; }
+    .paycheck-tab .job-name { font-weight: bold; display: block; }
+    .paycheck-tab .pay-info { font-size: 0.75rem; opacity: 0.8; }
+    .add-paycheck-btn { padding: 12px 20px; border-radius: 10px; border: 2px dashed #2a2a4a; background: transparent; color: #666; cursor: pointer; font-size: 0.85rem; }
+    .add-paycheck-btn:hover { border-color: #4fc3f7; color: #4fc3f7; }
+
     @media (max-width: 700px) { .cards, .sections { grid-template-columns: 1fr; } .login-box { width: 90%; } }
   </style>
 </head>
@@ -116,8 +124,10 @@
         </div>
       </div>
 
+      <div class="paycheck-tabs" id="paycheck-tabs"></div>
+
       <div class="cards">
-        <div class="card income"><h3>Monthly Income</h3><div class="amount" id="income">$0</div></div>
+        <div class="card income"><h3>Paycheck</h3><div class="amount" id="income">$0</div></div>
         <div class="card spent"><h3>Total Spent</h3><div class="amount" id="spent">$0</div></div>
         <div class="card savings"><h3>Money Left</h3><div class="amount" id="savings">$0</div></div>
       </div>
@@ -126,6 +136,9 @@
         <div class="section">
           <h2>Add Expense</h2>
           <form id="expense-form">
+            <select id="paycheck-select" required>
+              <option value="">Select Paycheck</option>
+            </select>
             <select id="category" required>
               <option value="">Select Category</option>
               <option>Mortgage</option>
@@ -182,6 +195,8 @@
     let token = localStorage.getItem("token");
     let username = localStorage.getItem("username");
     let isRegister = false;
+    let currentPaycheckId = null;
+    let paychecks = [];
 
     function headers() { return { "Content-Type": "application/json", "Authorization": token }; }
 
@@ -252,10 +267,49 @@
       const res = await fetch("/api/dashboard", { headers: headers() });
       if (res.status === 401) { logout(); return; }
       const data = await res.json();
+      paychecks = data.paychecks || [];
 
-      $("income").textContent = fmt(data.income);
+      // Render paycheck tabs
+      $("paycheck-tabs").innerHTML = paychecks.map(p => `
+        <div class="paycheck-tab ${currentPaycheckId == p.id ? 'active' : ''}" onclick="selectPaycheck(${p.id})">
+          <span class="job-name">${p.job_name}</span>
+          <span class="pay-info">${fmt(p.amount)} • ${p.pay_date}</span>
+        </div>
+      `).join("") + `<button class="add-paycheck-btn" onclick="addPaycheck()">+ Add Paycheck</button>`;
+
+      // Populate paycheck dropdown in expense form
+      $("paycheck-select").innerHTML = '<option value="">Select Paycheck</option>' + paychecks.map(p => `<option value="${p.id}">${p.job_name} - ${p.pay_date} (${fmt(p.amount)})</option>`).join("");
+
+      if (currentPaycheckId) {
+        loadPaycheck(currentPaycheckId);
+      } else if (paychecks.length) {
+        selectPaycheck(paychecks[0].id);
+      } else {
+        $("income").textContent = "$0";
+        $("spent").textContent = "$0";
+        $("savings").textContent = "$0";
+        $("chart").innerHTML = "<p style='color:#888'>Add a paycheck to start tracking</p>";
+        $("expenses-body").innerHTML = "";
+      }
+    }
+
+    function selectPaycheck(id) {
+      currentPaycheckId = id;
+      document.querySelectorAll('.paycheck-tab').forEach(t => t.classList.remove('active'));
+      const tabs = document.querySelectorAll('.paycheck-tab');
+      const idx = paychecks.findIndex(p => p.id == id);
+      if (tabs[idx]) tabs[idx].classList.add('active');
+      loadPaycheck(id);
+    }
+
+    async function loadPaycheck(id) {
+      const res = await fetch(`/api/dashboard/${id}`, { headers: headers() });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      $("income").textContent = fmt(data.paycheck.amount);
       $("spent").textContent = fmt(data.totalSpent);
-      $("savings").textContent = fmt(data.savings);
+      $("savings").textContent = fmt(data.moneyLeft);
 
       const max = data.byCategory.length ? Math.max(...data.byCategory.map(c => parseFloat(c.total))) : 1;
       $("chart").innerHTML = data.byCategory.map((c, i) => `
@@ -277,8 +331,27 @@
       `).join("");
     }
 
+    async function addPaycheck() {
+      const jobName = prompt("Job name (e.g. RACETRAC or GSBA):");
+      if (!jobName) return;
+      const amount = prompt("Paycheck amount ($):");
+      if (!amount) return;
+      const payDate = prompt("Pay date (YYYY-MM-DD):");
+      if (!payDate) return;
+      const nextPayDate = prompt("Next pay date (YYYY-MM-DD):");
+
+      await fetch("/api/paychecks", {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ job_name: jobName, amount: parseFloat(amount), pay_date: payDate, next_pay_date: nextPayDate || null })
+      });
+      load();
+    }
+
     $("expense-form").addEventListener("submit", async (e) => {
       e.preventDefault();
+      const paycheckId = $("paycheck-select").value;
+      if (!paycheckId) { alert("Select a paycheck first"); return; }
       await fetch("/api/expenses", {
         method: "POST",
         headers: headers(),
@@ -286,7 +359,8 @@
           category: $("category").value,
           description: $("description").value,
           amount: parseFloat($("amount").value),
-          date: $("date").value
+          date: $("date").value,
+          paycheck_id: parseInt(paycheckId)
         })
       });
       $("expense-form").reset();

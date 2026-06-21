@@ -37,9 +37,20 @@ async function start() {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS paychecks (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      job_name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      pay_date TEXT NOT NULL,
+      next_pay_date TEXT
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS expenses (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id),
+      paycheck_id INTEGER REFERENCES paychecks(id),
       category TEXT NOT NULL,
       description TEXT,
       amount REAL NOT NULL,
@@ -64,7 +75,7 @@ async function start() {
     const hashed = hashPassword(password);
     try {
       const result = await pool.query("INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id", [username, hashed]);
-      await pool.query("INSERT INTO settings (user_id, monthly_income) VALUES ($1, 15076)", [result.rows[0].id]);
+      await pool.query("INSERT INTO settings (user_id, monthly_income) VALUES ($1, 0)", [result.rows[0].id]);
       res.json({ success: true });
     } catch (e) {
       res.status(400).json({ error: "Username already exists" });
@@ -95,45 +106,32 @@ async function start() {
     });
   });
 
-  // WebAuthn - finish registration
   app.post("/api/webauthn/register", auth, async (req, res) => {
     const { credentialId, publicKey } = req.body;
     await pool.query("INSERT INTO webauthn_credentials (user_id, credential_id, public_key) VALUES ($1, $2, $3)", [req.userId, credentialId, publicKey]);
     res.json({ success: true });
   });
 
-  // WebAuthn - start login
   app.post("/api/webauthn/login-options", async (req, res) => {
     const { username } = req.body;
     const user = (await pool.query("SELECT id FROM users WHERE username=$1", [username])).rows[0];
     if (!user) return res.status(404).json({ error: "User not found" });
-
     const creds = (await pool.query("SELECT credential_id FROM webauthn_credentials WHERE user_id=$1", [user.id])).rows;
     if (!creds.length) return res.status(400).json({ error: "No biometric registered" });
-
     const challenge = crypto.randomBytes(32).toString("base64url");
     challenges[user.id] = challenge;
-
-    res.json({
-      challenge,
-      allowCredentials: creds.map(c => ({ id: c.credential_id, type: "public-key" })),
-      userVerification: "required",
-      userId: user.id
-    });
+    res.json({ challenge, allowCredentials: creds.map(c => ({ id: c.credential_id, type: "public-key" })), userVerification: "required", userId: user.id });
   });
 
-  // WebAuthn - finish login
   app.post("/api/webauthn/login", async (req, res) => {
     const { userId, credentialId } = req.body;
     const cred = (await pool.query("SELECT * FROM webauthn_credentials WHERE user_id=$1 AND credential_id=$2", [userId, credentialId])).rows[0];
     if (!cred) return res.status(401).json({ error: "Biometric verification failed" });
-
     const token = crypto.randomBytes(32).toString("hex");
     sessions[token] = userId;
     res.json({ token });
   });
 
-  // Check if user has biometric
   app.post("/api/webauthn/check", async (req, res) => {
     const { username } = req.body;
     const user = (await pool.query("SELECT id FROM users WHERE username=$1", [username])).rows[0];
@@ -142,27 +140,56 @@ async function start() {
     res.json({ hasBiometric: creds.length > 0 });
   });
 
-  // Remove biometric
   app.delete("/api/webauthn/remove", auth, async (req, res) => {
     await pool.query("DELETE FROM webauthn_credentials WHERE user_id=$1", [req.userId]);
     res.json({ success: true });
   });
 
-  // Dashboard
-  app.get("/api/dashboard", auth, async (req, res) => {
-    const income = (await pool.query("SELECT monthly_income FROM settings WHERE user_id=$1", [req.userId])).rows[0].monthly_income;
-    const month = new Date().toISOString().slice(0, 7);
+  // Paychecks
+  app.get("/api/paychecks", auth, async (req, res) => {
+    const paychecks = (await pool.query("SELECT * FROM paychecks WHERE user_id=$1 ORDER BY pay_date DESC", [req.userId])).rows;
+    res.json(paychecks);
+  });
 
-    const expenses = (await pool.query("SELECT * FROM expenses WHERE user_id=$1 AND date LIKE $2 ORDER BY date DESC", [req.userId, `${month}%`])).rows;
-    const catRows = (await pool.query("SELECT category, SUM(amount) as total FROM expenses WHERE user_id=$1 AND date LIKE $2 GROUP BY category ORDER BY total DESC", [req.userId, `${month}%`])).rows;
+  app.post("/api/paychecks", auth, async (req, res) => {
+    const { job_name, amount, pay_date, next_pay_date } = req.body;
+    const result = await pool.query("INSERT INTO paychecks (user_id, job_name, amount, pay_date, next_pay_date) VALUES ($1,$2,$3,$4,$5) RETURNING id", [req.userId, job_name, amount, pay_date, next_pay_date]);
+    res.json({ id: result.rows[0].id });
+  });
+
+  app.delete("/api/paychecks/:id", auth, async (req, res) => {
+    await pool.query("DELETE FROM expenses WHERE paycheck_id=$1 AND user_id=$2", [req.params.id, req.userId]);
+    await pool.query("DELETE FROM paychecks WHERE id=$1 AND user_id=$2", [req.params.id, req.userId]);
+    res.json({ success: true });
+  });
+
+  // Dashboard - per paycheck
+  app.get("/api/dashboard/:paycheckId", auth, async (req, res) => {
+    const paycheck = (await pool.query("SELECT * FROM paychecks WHERE id=$1 AND user_id=$2", [req.params.paycheckId, req.userId])).rows[0];
+    if (!paycheck) return res.status(404).json({ error: "Paycheck not found" });
+
+    const expenses = (await pool.query("SELECT * FROM expenses WHERE paycheck_id=$1 AND user_id=$2 ORDER BY date DESC", [req.params.paycheckId, req.userId])).rows;
+    const catRows = (await pool.query("SELECT category, SUM(amount) as total FROM expenses WHERE paycheck_id=$1 AND user_id=$2 GROUP BY category ORDER BY total DESC", [req.params.paycheckId, req.userId])).rows;
 
     const totalSpent = catRows.reduce((s, r) => s + parseFloat(r.total), 0);
-    res.json({ income, totalSpent, savings: income - totalSpent, expenses, byCategory: catRows });
+    res.json({ paycheck, totalSpent, moneyLeft: paycheck.amount - totalSpent, expenses, byCategory: catRows });
+  });
+
+  // Overall dashboard
+  app.get("/api/dashboard", auth, async (req, res) => {
+    const paychecks = (await pool.query("SELECT * FROM paychecks WHERE user_id=$1 ORDER BY pay_date DESC", [req.userId])).rows;
+    const totalIncome = paychecks.reduce((s, p) => s + parseFloat(p.amount), 0);
+
+    const expenses = (await pool.query("SELECT * FROM expenses WHERE user_id=$1 ORDER BY date DESC", [req.userId])).rows;
+    const catRows = (await pool.query("SELECT category, SUM(amount) as total FROM expenses WHERE user_id=$1 GROUP BY category ORDER BY total DESC", [req.userId])).rows;
+    const totalSpent = catRows.reduce((s, r) => s + parseFloat(r.total), 0);
+
+    res.json({ income: totalIncome, totalSpent, savings: totalIncome - totalSpent, expenses, byCategory: catRows, paychecks });
   });
 
   app.post("/api/expenses", auth, async (req, res) => {
-    const { category, description, amount, date } = req.body;
-    const result = await pool.query("INSERT INTO expenses (user_id, category, description, amount, date, paid) VALUES ($1,$2,$3,$4,$5,0) RETURNING id", [req.userId, category, description, amount, date]);
+    const { category, description, amount, date, paycheck_id } = req.body;
+    const result = await pool.query("INSERT INTO expenses (user_id, paycheck_id, category, description, amount, date, paid) VALUES ($1,$2,$3,$4,$5,$6,0) RETURNING id", [req.userId, paycheck_id, category, description, amount, date]);
     res.json({ id: result.rows[0].id });
   });
 
@@ -173,11 +200,6 @@ async function start() {
 
   app.delete("/api/expenses/:id", auth, async (req, res) => {
     await pool.query("DELETE FROM expenses WHERE id=$1 AND user_id=$2", [req.params.id, req.userId]);
-    res.json({ success: true });
-  });
-
-  app.put("/api/income", auth, async (req, res) => {
-    await pool.query("UPDATE settings SET monthly_income=$1 WHERE user_id=$2", [req.body.income, req.userId]);
     res.json({ success: true });
   });
 
