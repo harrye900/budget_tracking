@@ -142,6 +142,12 @@ async function start() {
     res.json({ hasBiometric: creds.length > 0 });
   });
 
+  // Remove biometric
+  app.delete("/api/webauthn/remove", auth, async (req, res) => {
+    await pool.query("DELETE FROM webauthn_credentials WHERE user_id=$1", [req.userId]);
+    res.json({ success: true });
+  });
+
   // Dashboard
   app.get("/api/dashboard", auth, async (req, res) => {
     const income = (await pool.query("SELECT monthly_income FROM settings WHERE user_id=$1", [req.userId])).rows[0].monthly_income;

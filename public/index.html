@@ -111,6 +111,7 @@
         <div class="user-info">
           <span class="username" id="display-user"></span>
           <button id="setup-biometric" style="padding:8px 16px;border-radius:8px;border:1px solid #66bb6a;background:transparent;color:#66bb6a;cursor:pointer;font-size:0.8rem;" onclick="setupBiometric()">Setup Face ID</button>
+          <button id="remove-biometric" style="padding:8px 16px;border-radius:8px;border:1px solid #ffa726;background:transparent;color:#ffa726;cursor:pointer;font-size:0.8rem;" onclick="removeBiometric()">Remove Face ID</button>
           <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
       </div>
@@ -339,6 +340,13 @@
 
       await fetch("/api/webauthn/register", { method: "POST", headers: headers(), body: JSON.stringify({ credentialId, publicKey }) });
       alert("✅ Face ID / Fingerprint set up! You can now use it to log in.");
+    }
+
+    // Remove biometric
+    async function removeBiometric() {
+      if (!confirm("Remove Face ID / Fingerprint from your account?")) return;
+      await fetch("/api/webauthn/remove", { method: "DELETE", headers: headers() });
+      alert("✅ Face ID removed. You can set it up again.");
     }
 
     // Biometric login
