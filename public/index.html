@@ -98,6 +98,7 @@
         <input type="password" id="login-pass" placeholder="Password" required>
         <button type="submit" id="login-btn">Sign In</button>
       </form>
+      <button id="biometric-btn" style="width:100%;padding:14px;border-radius:10px;border:2px solid #66bb6a;background:transparent;color:#66bb6a;font-weight:bold;font-size:1rem;cursor:pointer;margin-top:12px;display:none;" onclick="biometricLogin()">🔐 Face ID / Fingerprint</button>
       <div class="switch" id="login-switch">Don't have an account? <a onclick="showRegister()">Sign Up</a></div>
     </div>
   </div>
@@ -109,6 +110,7 @@
         <h1>💰 Harry's Budget Tracking</h1>
         <div class="user-info">
           <span class="username" id="display-user"></span>
+          <button id="setup-biometric" style="padding:8px 16px;border-radius:8px;border:1px solid #66bb6a;background:transparent;color:#66bb6a;cursor:pointer;font-size:0.8rem;" onclick="setupBiometric()">Setup Face ID</button>
           <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
       </div>
@@ -303,8 +305,77 @@
 
     // Init
     $("date").value = new Date().toISOString().slice(0, 10);
-    if (token) { showApp(); } 
+    if (token) { showApp(); }
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+
+    // Check biometric on username input
+    $("login-user").addEventListener("blur", async () => {
+      const user = $("login-user").value;
+      if (!user) return;
+      const res = await fetch("/api/webauthn/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user }) });
+      const data = await res.json();
+      $("biometric-btn").style.display = data.hasBiometric ? "block" : "none";
+    });
+
+    // Setup biometric (after login, in dashboard)
+    async function setupBiometric() {
+      if (!window.PublicKeyCredential) { alert("Your browser doesn't support biometric login"); return; }
+      const res = await fetch("/api/webauthn/register-options", { method: "POST", headers: headers(), body: JSON.stringify({ username }) });
+      const options = await res.json();
+
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          challenge: Uint8Array.from(atob(options.challenge.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0)),
+          rp: options.rp,
+          user: { id: Uint8Array.from(options.user.id, c => c.charCodeAt(0)), name: options.user.name, displayName: options.user.displayName },
+          pubKeyCredParams: options.pubKeyCredParams,
+          authenticatorSelection: options.authenticatorSelection,
+          timeout: 60000
+        }
+      });
+
+      const credentialId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+      const publicKey = btoa(String.fromCharCode(...new Uint8Array(credential.response.getPublicKey())));
+
+      await fetch("/api/webauthn/register", { method: "POST", headers: headers(), body: JSON.stringify({ credentialId, publicKey }) });
+      alert("✅ Face ID / Fingerprint set up! You can now use it to log in.");
+    }
+
+    // Biometric login
+    async function biometricLogin() {
+      const user = $("login-user").value;
+      if (!user) { alert("Enter your username first"); return; }
+
+      const res = await fetch("/api/webauthn/login-options", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user }) });
+      if (!res.ok) { alert("No biometric registered for this account"); return; }
+      const options = await res.json();
+
+      const credential = await navigator.credentials.get({
+        publicKey: {
+          challenge: Uint8Array.from(atob(options.challenge.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0)),
+          allowCredentials: options.allowCredentials.map(c => ({
+            id: Uint8Array.from(atob(c.id.replace(/-/g,'+').replace(/_/g,'/')), ch => ch.charCodeAt(0)),
+            type: c.type
+          })),
+          userVerification: options.userVerification,
+          timeout: 60000
+        }
+      });
+
+      const credentialId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+      const loginRes = await fetch("/api/webauthn/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: options.userId, credentialId }) });
+      const data = await loginRes.json();
+
+      if (loginRes.ok) {
+        token = data.token;
+        username = user;
+        localStorage.setItem("token", token);
+        localStorage.setItem("username", username);
+        showApp();
+      } else {
+        alert("Biometric verification failed");
+      }
+    }
 
     // Background slideshow
     let bgIndex = 0;

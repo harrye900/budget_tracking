@@ -7,6 +7,7 @@ const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
 const sessions = {};
+const challenges = {};
 
 function hashPassword(password) {
   return crypto.createHash("sha256").update(password).digest("hex");
@@ -28,6 +29,14 @@ async function start() {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS webauthn_credentials (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      credential_id TEXT NOT NULL,
+      public_key TEXT NOT NULL
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS expenses (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id),
@@ -46,7 +55,7 @@ async function start() {
     )
   `);
 
-  app.use(express.json());
+  app.use(express.json({ limit: "5mb" }));
   app.use(express.static(path.join(__dirname, "public")));
 
   // Register
@@ -70,7 +79,67 @@ async function start() {
     if (!result.rows.length) return res.status(401).json({ error: "Invalid username or password" });
     const token = crypto.randomBytes(32).toString("hex");
     sessions[token] = result.rows[0].id;
+    res.json({ token, userId: result.rows[0].id });
+  });
+
+  // WebAuthn - start registration
+  app.post("/api/webauthn/register-options", auth, async (req, res) => {
+    const challenge = crypto.randomBytes(32).toString("base64url");
+    challenges[req.userId] = challenge;
+    res.json({
+      challenge,
+      rp: { name: "Harry's Budget Tracking", id: new URL(req.headers.origin || "https://budget-tracking-038j.onrender.com").hostname },
+      user: { id: String(req.userId), name: req.body.username, displayName: req.body.username },
+      pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" }
+    });
+  });
+
+  // WebAuthn - finish registration
+  app.post("/api/webauthn/register", auth, async (req, res) => {
+    const { credentialId, publicKey } = req.body;
+    await pool.query("INSERT INTO webauthn_credentials (user_id, credential_id, public_key) VALUES ($1, $2, $3)", [req.userId, credentialId, publicKey]);
+    res.json({ success: true });
+  });
+
+  // WebAuthn - start login
+  app.post("/api/webauthn/login-options", async (req, res) => {
+    const { username } = req.body;
+    const user = (await pool.query("SELECT id FROM users WHERE username=$1", [username])).rows[0];
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const creds = (await pool.query("SELECT credential_id FROM webauthn_credentials WHERE user_id=$1", [user.id])).rows;
+    if (!creds.length) return res.status(400).json({ error: "No biometric registered" });
+
+    const challenge = crypto.randomBytes(32).toString("base64url");
+    challenges[user.id] = challenge;
+
+    res.json({
+      challenge,
+      allowCredentials: creds.map(c => ({ id: c.credential_id, type: "public-key" })),
+      userVerification: "required",
+      userId: user.id
+    });
+  });
+
+  // WebAuthn - finish login
+  app.post("/api/webauthn/login", async (req, res) => {
+    const { userId, credentialId } = req.body;
+    const cred = (await pool.query("SELECT * FROM webauthn_credentials WHERE user_id=$1 AND credential_id=$2", [userId, credentialId])).rows[0];
+    if (!cred) return res.status(401).json({ error: "Biometric verification failed" });
+
+    const token = crypto.randomBytes(32).toString("hex");
+    sessions[token] = userId;
     res.json({ token });
+  });
+
+  // Check if user has biometric
+  app.post("/api/webauthn/check", async (req, res) => {
+    const { username } = req.body;
+    const user = (await pool.query("SELECT id FROM users WHERE username=$1", [username])).rows[0];
+    if (!user) return res.json({ hasBiometric: false });
+    const creds = (await pool.query("SELECT id FROM webauthn_credentials WHERE user_id=$1", [user.id])).rows;
+    res.json({ hasBiometric: creds.length > 0 });
   });
 
   // Dashboard
