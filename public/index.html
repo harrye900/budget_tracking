@@ -136,9 +136,6 @@
         <div class="section">
           <h2>Add Expense</h2>
           <form id="expense-form">
-            <select id="paycheck-select" required>
-              <option value="">Select Paycheck</option>
-            </select>
             <select id="category" required>
               <option value="">Select Category</option>
               <option>Mortgage</option>
@@ -277,9 +274,6 @@
         </div>
       `).join("") + `<button class="add-paycheck-btn" onclick="addPaycheck()">+ Add Paycheck</button>`;
 
-      // Populate paycheck dropdown in expense form
-      $("paycheck-select").innerHTML = '<option value="">Select Paycheck</option>' + paychecks.map(p => `<option value="${p.id}">${p.job_name} - ${p.pay_date} (${fmt(p.amount)})</option>`).join("");
-
       if (currentPaycheckId) {
         loadPaycheck(currentPaycheckId);
       } else if (paychecks.length) {
@@ -350,8 +344,8 @@
 
     $("expense-form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const paycheckId = $("paycheck-select").value;
-      if (!paycheckId) { alert("Select a paycheck first"); return; }
+      const paycheckId = currentPaycheckId;
+      if (!paycheckId) { alert("Select a paycheck tab first"); return; }
       await fetch("/api/expenses", {
         method: "POST",
         headers: headers(),
@@ -360,7 +354,7 @@
           description: $("description").value,
           amount: parseFloat($("amount").value),
           date: $("date").value,
-          paycheck_id: parseInt(paycheckId)
+          paycheck_id: paycheckId
         })
       });
       $("expense-form").reset();
