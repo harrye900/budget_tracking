@@ -307,7 +307,20 @@
     // Init
     $("date").value = new Date().toISOString().slice(0, 10);
     if (token) { showApp(); }
+    else if (username) { autoBiometricLogin(); }
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+
+    // Auto Face ID on app open
+    async function autoBiometricLogin() {
+      try {
+        const res = await fetch("/api/webauthn/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username }) });
+        const data = await res.json();
+        if (data.hasBiometric) {
+          $("login-user").value = username;
+          await biometricLogin();
+        }
+      } catch(e) {}
+    }
 
     // Check biometric on username input
     $("login-user").addEventListener("blur", async () => {
