@@ -20,6 +20,65 @@ function auth(req, res, next) {
   next();
 }
 
+// Calculate next pay dates
+function getNextBiweekly(lastPayDate) {
+  const d = new Date(lastPayDate + "T00:00:00");
+  d.setDate(d.getDate() + 14);
+  return d.toISOString().slice(0, 10);
+}
+
+function getNextSemimonthly(lastPayDate) {
+  const d = new Date(lastPayDate + "T00:00:00");
+  const day = d.getDate();
+  if (day === 15) {
+    d.setDate(30);
+  } else {
+    d.setMonth(d.getMonth() + 1);
+    d.setDate(15);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+// Auto-generate paychecks that are due
+async function autoGeneratePaychecks(userId) {
+  const schedules = (await pool.query("SELECT * FROM pay_schedules WHERE user_id=$1", [userId])).rows;
+  const today = new Date().toISOString().slice(0, 10);
+
+  for (const schedule of schedules) {
+    // Find the latest paycheck for this schedule
+    const latest = (await pool.query(
+      "SELECT * FROM paychecks WHERE user_id=$1 AND job_name=$2 ORDER BY pay_date DESC LIMIT 1",
+      [userId, schedule.job_name]
+    )).rows[0];
+
+    let nextDate = latest ? latest.next_pay_date : schedule.start_date;
+
+    // Generate all paychecks up to today
+    while (nextDate && nextDate <= today) {
+      // Check if this paycheck already exists
+      const exists = (await pool.query(
+        "SELECT id FROM paychecks WHERE user_id=$1 AND job_name=$2 AND pay_date=$3",
+        [userId, schedule.job_name, nextDate]
+      )).rows[0];
+
+      if (!exists) {
+        const followingDate = schedule.schedule_type === "biweekly"
+          ? getNextBiweekly(nextDate)
+          : getNextSemimonthly(nextDate);
+
+        await pool.query(
+          "INSERT INTO paychecks (user_id, job_name, amount, pay_date, next_pay_date) VALUES ($1,$2,$3,$4,$5)",
+          [userId, schedule.job_name, schedule.amount, nextDate, followingDate]
+        );
+      }
+
+      nextDate = schedule.schedule_type === "biweekly"
+        ? getNextBiweekly(nextDate)
+        : getNextSemimonthly(nextDate);
+    }
+  }
+}
+
 async function start() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -34,6 +93,16 @@ async function start() {
       user_id INTEGER REFERENCES users(id),
       credential_id TEXT NOT NULL,
       public_key TEXT NOT NULL
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pay_schedules (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      job_name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      schedule_type TEXT NOT NULL,
+      start_date TEXT NOT NULL
     )
   `);
   await pool.query(`
@@ -58,7 +127,6 @@ async function start() {
       paid INTEGER DEFAULT 0
     )
   `);
-  // Add paycheck_id column if it doesn't exist (for existing databases)
   await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS paycheck_id INTEGER`).catch(() => {});
   await pool.query(`
     CREATE TABLE IF NOT EXISTS settings (
@@ -95,7 +163,7 @@ async function start() {
     res.json({ token, userId: result.rows[0].id });
   });
 
-  // WebAuthn - start registration
+  // WebAuthn
   app.post("/api/webauthn/register-options", auth, async (req, res) => {
     const challenge = crypto.randomBytes(32).toString("base64url");
     challenges[req.userId] = challenge;
@@ -147,6 +215,24 @@ async function start() {
     res.json({ success: true });
   });
 
+  // Pay Schedules
+  app.get("/api/pay-schedules", auth, async (req, res) => {
+    const schedules = (await pool.query("SELECT * FROM pay_schedules WHERE user_id=$1", [req.userId])).rows;
+    res.json(schedules);
+  });
+
+  app.post("/api/pay-schedules", auth, async (req, res) => {
+    const { job_name, amount, schedule_type, start_date } = req.body;
+    await pool.query("INSERT INTO pay_schedules (user_id, job_name, amount, schedule_type, start_date) VALUES ($1,$2,$3,$4,$5)", [req.userId, job_name, amount, schedule_type, start_date]);
+    await autoGeneratePaychecks(req.userId);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/pay-schedules/:id", auth, async (req, res) => {
+    await pool.query("DELETE FROM pay_schedules WHERE id=$1 AND user_id=$2", [req.params.id, req.userId]);
+    res.json({ success: true });
+  });
+
   // Paychecks
   app.get("/api/paychecks", auth, async (req, res) => {
     const paychecks = (await pool.query("SELECT * FROM paychecks WHERE user_id=$1 ORDER BY pay_date DESC", [req.userId])).rows;
@@ -182,8 +268,10 @@ async function start() {
     }
   });
 
-  // Overall dashboard
+  // Overall dashboard - auto generates paychecks on load
   app.get("/api/dashboard", auth, async (req, res) => {
+    await autoGeneratePaychecks(req.userId);
+
     const paychecks = (await pool.query("SELECT * FROM paychecks WHERE user_id=$1 ORDER BY pay_date DESC", [req.userId])).rows;
     const totalIncome = paychecks.reduce((s, p) => s + parseFloat(p.amount), 0);
 

@@ -326,20 +326,39 @@
     }
 
     async function addPaycheck() {
-      const jobName = prompt("Job name (e.g. RACETRAC or GSBA):");
-      if (!jobName) return;
-      const amount = prompt("Paycheck amount ($):");
-      if (!amount) return;
-      const payDate = prompt("Pay date (YYYY-MM-DD):");
-      if (!payDate) return;
-      const nextPayDate = prompt("Next pay date (YYYY-MM-DD):");
+      const choice = prompt("1 = Setup automatic pay schedule\n2 = Add single paycheck\n\nEnter 1 or 2:");
+      if (choice === "1") {
+        const jobName = prompt("Job name (e.g. RACETRAC or GSBA):");
+        if (!jobName) return;
+        const amount = prompt("Paycheck amount ($):");
+        if (!amount) return;
+        const scheduleType = prompt("Schedule type:\n1 = Bi-weekly (every 2 weeks)\n2 = Semi-monthly (15th and 30th)\n\nEnter 1 or 2:");
+        const type = scheduleType === "2" ? "semimonthly" : "biweekly";
+        const startDate = prompt("First/last pay date (YYYY-MM-DD):\n(e.g. 2025-06-18 for RACETRAC)");
+        if (!startDate) return;
 
-      await fetch("/api/paychecks", {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify({ job_name: jobName, amount: parseFloat(amount), pay_date: payDate, next_pay_date: nextPayDate || null })
-      });
-      load();
+        await fetch("/api/pay-schedules", {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({ job_name: jobName, amount: parseFloat(amount), schedule_type: type, start_date: startDate })
+        });
+        load();
+      } else {
+        const jobName = prompt("Job name (e.g. RACETRAC or GSBA):");
+        if (!jobName) return;
+        const amount = prompt("Paycheck amount ($):");
+        if (!amount) return;
+        const payDate = prompt("Pay date (YYYY-MM-DD):");
+        if (!payDate) return;
+        const nextPayDate = prompt("Next pay date (YYYY-MM-DD):");
+
+        await fetch("/api/paychecks", {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({ job_name: jobName, amount: parseFloat(amount), pay_date: payDate, next_pay_date: nextPayDate || null })
+        });
+        load();
+      }
     }
 
     $("expense-form").addEventListener("submit", async (e) => {
