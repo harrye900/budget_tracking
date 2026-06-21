@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, sans-serif; background: #0a0a1a; color: #e0e0e0; padding: 20px; }
+    h1 { color: #4fc3f7; margin-bottom: 20px; }
+    h2 { color: #ff9800; margin: 20px 0 10px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 0.85rem; }
+    th { background: #1f1f45; padding: 10px; text-align: left; color: #888; }
+    td { padding: 10px; border-top: 1px solid #2a2a4a; }
+    tr:hover { background: rgba(79, 195, 247, 0.05); }
+    .back { color: #4fc3f7; text-decoration: none; display: inline-block; margin-bottom: 20px; }
+    .empty { color: #666; font-style: italic; }
+  </style>
+</head>
+<body>
+  <a class="back" href="/">← Back to App</a>
+  <h1>Database Viewer</h1>
+  <div id="content">Loading...</div>
+  <script>
+    const token = localStorage.getItem("token");
+    if (!token) { document.getElementById("content").innerHTML = "<p>Please log in first</p>"; }
+    else {
+      fetch("/api/admin/tables", { headers: { "Authorization": token } })
+        .then(r => r.json())
+        .then(data => {
+          let html = "";
+          for (const [table, rows] of Object.entries(data)) {
+            html += `<h2>${table} (${rows.length} rows)</h2>`;
+            if (!rows.length) { html += `<p class="empty">No data</p>`; continue; }
+            const cols = Object.keys(rows[0]);
+            html += `<table><thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>`;
+            html += rows.map(r => `<tr>${cols.map(c => `<td>${r[c] ?? ''}</td>`).join("")}</tr>`).join("");
+            html += `</tbody></table>`;
+          }
+          document.getElementById("content").innerHTML = html;
+        });
+    }
+  </script>
+</body>
+</html>

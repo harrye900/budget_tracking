@@ -306,6 +306,14 @@ async function start() {
     res.json({ success: true });
   });
 
+  // Admin - view database tables
+  app.get("/api/admin/tables", auth, async (req, res) => {
+    const paychecks = (await pool.query("SELECT * FROM paychecks WHERE user_id=$1 ORDER BY pay_date DESC", [req.userId])).rows;
+    const expenses = (await pool.query("SELECT * FROM expenses WHERE user_id=$1 ORDER BY id DESC", [req.userId])).rows;
+    const schedules = (await pool.query("SELECT * FROM pay_schedules WHERE user_id=$1", [req.userId])).rows;
+    res.json({ pay_schedules: schedules, paychecks, expenses });
+  });
+
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => console.log(`Budget Tracking running on port ${PORT}`));
 }
