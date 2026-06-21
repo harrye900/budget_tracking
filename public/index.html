@@ -298,7 +298,7 @@
 
     async function loadPaycheck(id) {
       const res = await fetch(`/api/dashboard/${id}`, { headers: headers() });
-      if (!res.ok) return;
+      if (!res.ok) { console.error("loadPaycheck failed", await res.text()); return; }
       const data = await res.json();
 
       $("income").textContent = fmt(data.paycheck.amount);

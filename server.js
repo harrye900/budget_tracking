@@ -50,7 +50,7 @@ async function start() {
     CREATE TABLE IF NOT EXISTS expenses (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id),
-      paycheck_id INTEGER REFERENCES paychecks(id),
+      paycheck_id INTEGER,
       category TEXT NOT NULL,
       description TEXT,
       amount REAL NOT NULL,
@@ -58,6 +58,8 @@ async function start() {
       paid INTEGER DEFAULT 0
     )
   `);
+  // Add paycheck_id column if it doesn't exist (for existing databases)
+  await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS paycheck_id INTEGER`).catch(() => {});
   await pool.query(`
     CREATE TABLE IF NOT EXISTS settings (
       id SERIAL PRIMARY KEY,
@@ -165,14 +167,19 @@ async function start() {
 
   // Dashboard - per paycheck
   app.get("/api/dashboard/:paycheckId", auth, async (req, res) => {
-    const paycheck = (await pool.query("SELECT * FROM paychecks WHERE id=$1 AND user_id=$2", [req.params.paycheckId, req.userId])).rows[0];
-    if (!paycheck) return res.status(404).json({ error: "Paycheck not found" });
+    try {
+      const paycheck = (await pool.query("SELECT * FROM paychecks WHERE id=$1 AND user_id=$2", [req.params.paycheckId, req.userId])).rows[0];
+      if (!paycheck) return res.status(404).json({ error: "Paycheck not found" });
 
-    const expenses = (await pool.query("SELECT * FROM expenses WHERE paycheck_id=$1 AND user_id=$2 ORDER BY date DESC, id DESC", [req.params.paycheckId, req.userId])).rows;
-    const catRows = (await pool.query("SELECT category, SUM(amount) as total FROM expenses WHERE paycheck_id=$1 AND user_id=$2 GROUP BY category ORDER BY total DESC", [req.params.paycheckId, req.userId])).rows;
+      const expenses = (await pool.query("SELECT * FROM expenses WHERE paycheck_id=$1 AND user_id=$2 ORDER BY id DESC", [req.params.paycheckId, req.userId])).rows;
+      const catRows = (await pool.query("SELECT category, SUM(amount) as total FROM expenses WHERE paycheck_id=$1 AND user_id=$2 GROUP BY category ORDER BY total DESC", [req.params.paycheckId, req.userId])).rows;
 
-    const totalSpent = catRows.reduce((s, r) => s + parseFloat(r.total), 0);
-    res.json({ paycheck, totalSpent, moneyLeft: parseFloat(paycheck.amount) - totalSpent, expenses, byCategory: catRows });
+      const totalSpent = catRows.reduce((s, r) => s + parseFloat(r.total), 0);
+      res.json({ paycheck: { ...paycheck, amount: parseFloat(paycheck.amount) }, totalSpent, moneyLeft: parseFloat(paycheck.amount) - totalSpent, expenses, byCategory: catRows });
+    } catch(e) {
+      console.error("Dashboard paycheck error:", e);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // Overall dashboard
@@ -188,9 +195,17 @@ async function start() {
   });
 
   app.post("/api/expenses", auth, async (req, res) => {
-    const { category, description, amount, date, paycheck_id } = req.body;
-    const result = await pool.query("INSERT INTO expenses (user_id, paycheck_id, category, description, amount, date, paid) VALUES ($1,$2,$3,$4,$5,$6,0) RETURNING id", [req.userId, paycheck_id, category, description, amount, date]);
-    res.json({ id: result.rows[0].id });
+    try {
+      const { category, description, amount, date, paycheck_id } = req.body;
+      const result = await pool.query(
+        "INSERT INTO expenses (user_id, paycheck_id, category, description, amount, date, paid) VALUES ($1,$2,$3,$4,$5,$6,0) RETURNING id",
+        [req.userId, paycheck_id, category, description || '', amount, date]
+      );
+      res.json({ id: result.rows[0].id });
+    } catch(e) {
+      console.error("Add expense error:", e);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.patch("/api/expenses/:id/toggle", auth, async (req, res) => {
