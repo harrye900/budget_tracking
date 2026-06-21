@@ -1,25 +1,36 @@
 const express = require("express");
-const initSqlJs = require("sql.js");
-const fs = require("fs");
+const { Pool } = require("pg");
 const path = require("path");
+const crypto = require("crypto");
 
 const app = express();
-const DB_PATH = process.env.RENDER ? path.join("/tmp", "budget.db") : path.join(__dirname, "budget.db");
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-let db;
+const sessions = {};
+
+function hashPassword(password) {
+  return crypto.createHash("sha256").update(password).digest("hex");
+}
+
+function auth(req, res, next) {
+  const token = req.headers.authorization;
+  if (!token || !sessions[token]) return res.status(401).json({ error: "Unauthorized" });
+  req.userId = sessions[token];
+  next();
+}
 
 async function start() {
-  const SQL = await initSqlJs();
-
-  if (fs.existsSync(DB_PATH)) {
-    db = new SQL.Database(fs.readFileSync(DB_PATH));
-  } else {
-    db = new SQL.Database();
-  }
-
-  db.run(`
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS expenses (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
       category TEXT NOT NULL,
       description TEXT,
       amount REAL NOT NULL,
@@ -27,60 +38,76 @@ async function start() {
       paid INTEGER DEFAULT 0
     )
   `);
-  db.run(`CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, monthly_income REAL NOT NULL)`);
-  db.run(`INSERT OR IGNORE INTO settings (id, monthly_income) VALUES (1, 15076)`);
-  save();
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS settings (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER UNIQUE REFERENCES users(id),
+      monthly_income REAL NOT NULL
+    )
+  `);
 
   app.use(express.json());
   app.use(express.static(path.join(__dirname, "public")));
 
-  app.get("/api/dashboard", (req, res) => {
-    const income = db.exec("SELECT monthly_income FROM settings WHERE id=1")[0].values[0][0];
+  // Register
+  app.post("/api/register", async (req, res) => {
+    const { username, password } = req.body;
+    const hashed = hashPassword(password);
+    try {
+      const result = await pool.query("INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id", [username, hashed]);
+      await pool.query("INSERT INTO settings (user_id, monthly_income) VALUES ($1, 15076)", [result.rows[0].id]);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(400).json({ error: "Username already exists" });
+    }
+  });
+
+  // Login
+  app.post("/api/login", async (req, res) => {
+    const { username, password } = req.body;
+    const hashed = hashPassword(password);
+    const result = await pool.query("SELECT id FROM users WHERE username=$1 AND password=$2", [username, hashed]);
+    if (!result.rows.length) return res.status(401).json({ error: "Invalid username or password" });
+    const token = crypto.randomBytes(32).toString("hex");
+    sessions[token] = result.rows[0].id;
+    res.json({ token });
+  });
+
+  // Dashboard
+  app.get("/api/dashboard", auth, async (req, res) => {
+    const income = (await pool.query("SELECT monthly_income FROM settings WHERE user_id=$1", [req.userId])).rows[0].monthly_income;
     const month = new Date().toISOString().slice(0, 7);
 
-    const expRows = db.exec(`SELECT id, category, description, amount, date, paid FROM expenses WHERE date LIKE '${month}%' ORDER BY date DESC`);
-    const expenses = expRows.length ? expRows[0].values.map(r => ({ id: r[0], category: r[1], description: r[2], amount: r[3], date: r[4], paid: r[5] })) : [];
+    const expenses = (await pool.query("SELECT * FROM expenses WHERE user_id=$1 AND date LIKE $2 ORDER BY date DESC", [req.userId, `${month}%`])).rows;
+    const catRows = (await pool.query("SELECT category, SUM(amount) as total FROM expenses WHERE user_id=$1 AND date LIKE $2 GROUP BY category ORDER BY total DESC", [req.userId, `${month}%`])).rows;
 
-    const catRows = db.exec(`SELECT category, SUM(amount) as total FROM expenses WHERE date LIKE '${month}%' GROUP BY category ORDER BY total DESC`);
-    const byCategory = catRows.length ? catRows[0].values.map(r => ({ category: r[0], total: r[1] })) : [];
-
-    const totalSpent = byCategory.reduce((s, r) => s + r.total, 0);
-    res.json({ income, totalSpent, savings: income - totalSpent, expenses, byCategory });
+    const totalSpent = catRows.reduce((s, r) => s + parseFloat(r.total), 0);
+    res.json({ income, totalSpent, savings: income - totalSpent, expenses, byCategory: catRows });
   });
 
-  app.post("/api/expenses", (req, res) => {
+  app.post("/api/expenses", auth, async (req, res) => {
     const { category, description, amount, date } = req.body;
-    db.run("INSERT INTO expenses (category, description, amount, date, paid) VALUES (?,?,?,?,0)", [category, description, amount, date]);
-    save();
-    const id = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
-    res.json({ id });
+    const result = await pool.query("INSERT INTO expenses (user_id, category, description, amount, date, paid) VALUES ($1,$2,$3,$4,$5,0) RETURNING id", [req.userId, category, description, amount, date]);
+    res.json({ id: result.rows[0].id });
   });
 
-  app.patch("/api/expenses/:id/toggle", (req, res) => {
-    db.run("UPDATE expenses SET paid = CASE WHEN paid=1 THEN 0 ELSE 1 END WHERE id=?", [req.params.id]);
-    save();
+  app.patch("/api/expenses/:id/toggle", auth, async (req, res) => {
+    await pool.query("UPDATE expenses SET paid = CASE WHEN paid=1 THEN 0 ELSE 1 END WHERE id=$1 AND user_id=$2", [req.params.id, req.userId]);
     res.json({ success: true });
   });
 
-  app.delete("/api/expenses/:id", (req, res) => {
-    db.run("DELETE FROM expenses WHERE id=?", [req.params.id]);
-    save();
+  app.delete("/api/expenses/:id", auth, async (req, res) => {
+    await pool.query("DELETE FROM expenses WHERE id=$1 AND user_id=$2", [req.params.id, req.userId]);
     res.json({ success: true });
   });
 
-  app.put("/api/income", (req, res) => {
-    db.run("UPDATE settings SET monthly_income=? WHERE id=1", [req.body.income]);
-    save();
+  app.put("/api/income", auth, async (req, res) => {
+    await pool.query("UPDATE settings SET monthly_income=$1 WHERE user_id=$2", [req.body.income, req.userId]);
     res.json({ success: true });
   });
 
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => console.log(`Budget Tracking running on port ${PORT}`));
-}
-
-function save() {
-  const data = db.export();
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
 }
 
 start();

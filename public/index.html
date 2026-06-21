@@ -10,103 +10,155 @@
   <meta name="apple-mobile-web-app-title" content="Budget Tracking">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f23; color: #e0e0e0; min-height: 100vh; padding: 20px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a1a; color: #e0e0e0; min-height: 100vh; }
+
+    /* Login Screen */
+    .login-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 50%, #0a0a1a 100%); }
+    .login-box { background: #12122b; padding: 40px; border-radius: 20px; width: 380px; box-shadow: 0 20px 60px rgba(79, 195, 247, 0.1); border: 1px solid #2a2a4a; }
+    .login-box h1 { text-align: center; color: #4fc3f7; margin-bottom: 8px; font-size: 1.8rem; }
+    .login-box p { text-align: center; color: #666; margin-bottom: 30px; font-size: 0.9rem; }
+    .login-box .icon { text-align: center; font-size: 3rem; margin-bottom: 16px; }
+    .login-box input { width: 100%; padding: 14px 16px; border-radius: 10px; border: 1px solid #2a2a4a; background: #0a0a1a; color: #e0e0e0; font-size: 1rem; margin-bottom: 14px; transition: border 0.3s; }
+    .login-box input:focus { outline: none; border-color: #4fc3f7; }
+    .login-box button { width: 100%; padding: 14px; border-radius: 10px; border: none; background: linear-gradient(135deg, #4fc3f7, #2196f3); color: #fff; font-weight: bold; font-size: 1rem; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+    .login-box button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(79, 195, 247, 0.3); }
+    .login-box .switch { text-align: center; margin-top: 16px; color: #666; font-size: 0.85rem; }
+    .login-box .switch a { color: #4fc3f7; cursor: pointer; text-decoration: none; }
+    .login-box .error { color: #ef5350; text-align: center; margin-bottom: 12px; font-size: 0.85rem; display: none; }
+
+    /* Dashboard */
+    .app { display: none; padding: 20px; }
     .container { max-width: 1100px; margin: 0 auto; }
-    h1 { text-align: center; margin-bottom: 30px; color: #4fc3f7; font-size: 2rem; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+    .header h1 { color: #4fc3f7; font-size: 1.6rem; }
+    .header .user-info { display: flex; align-items: center; gap: 12px; }
+    .header .username { color: #888; font-size: 0.9rem; }
+    .logout-btn { padding: 8px 16px; border-radius: 8px; border: 1px solid #ef5350; background: transparent; color: #ef5350; cursor: pointer; font-size: 0.8rem; }
+    .logout-btn:hover { background: #ef5350; color: #fff; }
 
     .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 30px; }
-    .card { background: #1a1a3e; padding: 24px; border-radius: 12px; text-align: center; }
-    .card h3 { font-size: 0.85rem; text-transform: uppercase; color: #888; margin-bottom: 8px; }
-    .card .amount { font-size: 1.8rem; font-weight: bold; }
+    .card { background: linear-gradient(135deg, #1a1a3e, #12122b); padding: 28px; border-radius: 16px; text-align: center; border: 1px solid #2a2a4a; transition: transform 0.2s; }
+    .card:hover { transform: translateY(-4px); }
+    .card h3 { font-size: 0.8rem; text-transform: uppercase; color: #888; margin-bottom: 10px; letter-spacing: 1px; }
+    .card .amount { font-size: 2rem; font-weight: bold; }
     .card.income .amount { color: #4fc3f7; }
     .card.spent .amount { color: #ef5350; }
     .card.savings .amount { color: #66bb6a; }
 
     .sections { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
-    .section { background: #1a1a3e; padding: 24px; border-radius: 12px; }
+    .section { background: linear-gradient(135deg, #1a1a3e, #12122b); padding: 28px; border-radius: 16px; border: 1px solid #2a2a4a; }
     .section h2 { font-size: 1.1rem; margin-bottom: 16px; color: #4fc3f7; }
 
-    form { display: flex; flex-direction: column; gap: 10px; }
-    input, select { padding: 10px; border-radius: 8px; border: 1px solid #333; background: #0f0f23; color: #e0e0e0; font-size: 0.9rem; }
-    button { padding: 10px 20px; border-radius: 8px; border: none; background: #4fc3f7; color: #000; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
-    button:hover { background: #81d4fa; }
+    form { display: flex; flex-direction: column; gap: 12px; }
+    input, select { padding: 12px 14px; border-radius: 10px; border: 1px solid #2a2a4a; background: #0a0a1a; color: #e0e0e0; font-size: 0.9rem; transition: border 0.3s; }
+    input:focus, select:focus { outline: none; border-color: #4fc3f7; }
+    .submit-btn { padding: 12px 20px; border-radius: 10px; border: none; background: linear-gradient(135deg, #4fc3f7, #2196f3); color: #fff; font-weight: bold; cursor: pointer; font-size: 0.9rem; transition: transform 0.2s; }
+    .submit-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(79, 195, 247, 0.3); }
 
-    .chart-container { margin-bottom: 30px; background: #1a1a3e; padding: 24px; border-radius: 12px; }
-    .chart-container h2 { font-size: 1.1rem; margin-bottom: 16px; color: #4fc3f7; }
-    .chart-bar { display: flex; align-items: center; margin-bottom: 12px; }
-    .chart-bar .label { width: 160px; font-size: 0.85rem; }
-    .chart-bar .bar-bg { flex: 1; height: 24px; background: #2a2a4a; border-radius: 6px; overflow: hidden; position: relative; }
-    .chart-bar .bar-fill { height: 100%; border-radius: 6px; transition: width 0.3s; }
-    .chart-bar .bar-amount { position: absolute; right: 8px; top: 3px; font-size: 0.75rem; color: #fff; }
+    .chart-bar { display: flex; align-items: center; margin-bottom: 14px; }
+    .chart-bar .label { width: 160px; font-size: 0.82rem; color: #bbb; }
+    .chart-bar .bar-bg { flex: 1; height: 26px; background: #0a0a1a; border-radius: 8px; overflow: hidden; position: relative; }
+    .chart-bar .bar-fill { height: 100%; border-radius: 8px; transition: width 0.5s ease; }
+    .chart-bar .bar-amount { position: absolute; right: 10px; top: 4px; font-size: 0.75rem; color: #fff; font-weight: bold; }
 
-    .expenses-table { width: 100%; border-collapse: collapse; background: #1a1a3e; border-radius: 12px; overflow: hidden; }
-    .expenses-table th { background: #252550; padding: 12px; text-align: left; font-size: 0.8rem; text-transform: uppercase; color: #888; }
-    .expenses-table td { padding: 12px; border-top: 1px solid #2a2a4a; }
-    .expenses-table .del-btn { background: #ef5350; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+    .expenses-table { width: 100%; border-collapse: collapse; background: linear-gradient(135deg, #1a1a3e, #12122b); border-radius: 16px; overflow: hidden; border: 1px solid #2a2a4a; }
+    .expenses-table th { background: #1f1f45; padding: 14px; text-align: left; font-size: 0.75rem; text-transform: uppercase; color: #888; letter-spacing: 1px; }
+    .expenses-table td { padding: 14px; border-top: 1px solid #2a2a4a; }
+    .expenses-table tr:hover { background: rgba(79, 195, 247, 0.03); }
+    .del-btn { background: #ef5350; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; transition: background 0.2s; }
+    .del-btn:hover { background: #f44336; }
     .paid-check { width: 20px; height: 20px; cursor: pointer; accent-color: #66bb6a; }
-    .row-paid { opacity: 0.5; text-decoration: line-through; }
+    .row-paid { opacity: 0.4; }
+    .row-paid td { text-decoration: line-through; }
 
-    @media (max-width: 700px) { .cards, .sections { grid-template-columns: 1fr; } }
+    @media (max-width: 700px) { .cards, .sections { grid-template-columns: 1fr; } .login-box { width: 90%; } }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>💰 Budget Tracking</h1>
-    <div class="cards">
-      <div class="card income"><h3>Monthly Income</h3><div class="amount" id="income">$0</div></div>
-      <div class="card spent"><h3>Total Spent</h3><div class="amount" id="spent">$0</div></div>
-      <div class="card savings"><h3>Money Left</h3><div class="amount" id="savings">$0</div></div>
-    </div>
 
-    <div class="sections">
-      <div class="section">
-        <h2>Add Expense</h2>
-        <form id="expense-form">
-          <select id="category" required>
-            <option value="">Select Category</option>
-            <option>Mortgage</option>
-            <optgroup label="Bills">
-              <option>Water</option>
-              <option>Gas</option>
-              <option>Electricity</option>
-              <option>Car Insurance</option>
-              <option>Internet</option>
-              <option>Wireless</option>
-              <option>Car Note</option>
-              <option>Gym</option>
-              <option>Credit Card - Chase</option>
-              <option>Credit Card - Navy</option>
-              <option>Credit Card - Capital One 1</option>
-              <option>Credit Card - Capital One 2</option>
-              <option>Credit Card - Credit One 1</option>
-              <option>Credit Card - Credit One 2</option>
-              <option>Credit Card - Premier 1</option>
-              <option>Credit Card - Premier 2</option>
-              <option>Camera</option>
-              <option>Grass Mower</option>
-              <option>Motor Gas</option>
-            </optgroup>
-            <option>Food</option>
-            <option>Transport</option><option>Entertainment</option>
-            <option>Shopping</option><option>Subscriptions</option><option>Other</option>
-          </select>
-          <input type="text" id="description" placeholder="Description (optional)">
-          <input type="number" id="amount" placeholder="Amount ($)" step="0.01" required>
-          <input type="date" id="date" required>
-          <button type="submit">Add Expense</button>
-        </form>
-      </div>
-      <div class="section">
-        <h2>Spending Chart</h2>
-        <div id="chart"></div>
-      </div>
+  <!-- Login Screen -->
+  <div class="login-page" id="login-page">
+    <div class="login-box">
+      <div class="icon">💰</div>
+      <h1>Budget Tracking</h1>
+      <p id="login-subtitle">Sign in to manage your money</p>
+      <div class="error" id="login-error"></div>
+      <form id="login-form">
+        <input type="text" id="login-user" placeholder="Username" required>
+        <input type="password" id="login-pass" placeholder="Password" required>
+        <button type="submit" id="login-btn">Sign In</button>
+      </form>
+      <div class="switch" id="login-switch">Don't have an account? <a onclick="showRegister()">Sign Up</a></div>
     </div>
+  </div>
 
-    <h2 style="margin-bottom:12px; color:#4fc3f7;">Expenses</h2>
-    <table class="expenses-table">
-      <thead><tr><th>Paid</th><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th></th></tr></thead>
-      <tbody id="expenses-body"></tbody>
-    </table>
+  <!-- Dashboard -->
+  <div class="app" id="app">
+    <div class="container">
+      <div class="header">
+        <h1>💰 Budget Tracking</h1>
+        <div class="user-info">
+          <span class="username" id="display-user"></span>
+          <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+      </div>
+
+      <div class="cards">
+        <div class="card income"><h3>Monthly Income</h3><div class="amount" id="income">$0</div></div>
+        <div class="card spent"><h3>Total Spent</h3><div class="amount" id="spent">$0</div></div>
+        <div class="card savings"><h3>Money Left</h3><div class="amount" id="savings">$0</div></div>
+      </div>
+
+      <div class="sections">
+        <div class="section">
+          <h2>Add Expense</h2>
+          <form id="expense-form">
+            <select id="category" required>
+              <option value="">Select Category</option>
+              <option>Mortgage</option>
+              <optgroup label="Bills">
+                <option>Water</option>
+                <option>Gas</option>
+                <option>Electricity</option>
+                <option>Car Insurance</option>
+                <option>Internet</option>
+                <option>Wireless</option>
+                <option>Car Note</option>
+                <option>Gym</option>
+                <option>Credit Card - Chase</option>
+                <option>Credit Card - Navy</option>
+                <option>Credit Card - Capital One 1</option>
+                <option>Credit Card - Capital One 2</option>
+                <option>Credit Card - Credit One 1</option>
+                <option>Credit Card - Credit One 2</option>
+                <option>Credit Card - Premier 1</option>
+                <option>Credit Card - Premier 2</option>
+                <option>Camera</option>
+                <option>Grass Mower</option>
+                <option>Motor Gas</option>
+              </optgroup>
+              <option>Food</option>
+              <option>Transport</option><option>Entertainment</option>
+              <option>Shopping</option><option>Subscriptions</option><option>Other</option>
+            </select>
+            <input type="text" id="description" placeholder="Description (optional)">
+            <input type="number" id="amount" placeholder="Amount ($)" step="0.01" required>
+            <input type="date" id="date" required>
+            <button type="submit" class="submit-btn">Add Expense</button>
+          </form>
+        </div>
+        <div class="section">
+          <h2>Spending Chart</h2>
+          <div id="chart"></div>
+        </div>
+      </div>
+
+      <h2 style="margin-bottom:12px; color:#4fc3f7;">Expenses</h2>
+      <table class="expenses-table">
+        <thead><tr><th>Paid</th><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th></th></tr></thead>
+        <tbody id="expenses-body"></tbody>
+      </table>
+    </div>
   </div>
 
   <script>
@@ -114,31 +166,99 @@
     const fmt = n => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const colors = ["#4fc3f7","#ef5350","#66bb6a","#ffa726","#ab47bc","#26c6da","#ec407a","#8d6e63","#78909c","#d4e157"];
 
+    let token = localStorage.getItem("token");
+    let username = localStorage.getItem("username");
+    let isRegister = false;
+
+    function headers() { return { "Content-Type": "application/json", "Authorization": token }; }
+
+    function showRegister() {
+      isRegister = true;
+      $("login-subtitle").textContent = "Create your account";
+      $("login-btn").textContent = "Sign Up";
+      $("login-switch").innerHTML = 'Already have an account? <a onclick="showLogin()">Sign In</a>';
+      $("login-error").style.display = "none";
+    }
+
+    function showLogin() {
+      isRegister = false;
+      $("login-subtitle").textContent = "Sign in to manage your money";
+      $("login-btn").textContent = "Sign In";
+      $("login-switch").innerHTML = "Don't have an account? <a onclick=\"showRegister()\">Sign Up</a>";
+      $("login-error").style.display = "none";
+    }
+
+    $("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const user = $("login-user").value;
+      const pass = $("login-pass").value;
+      const url = isRegister ? "/api/register" : "/api/login";
+
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user, password: pass }) });
+      const data = await res.json();
+
+      if (!res.ok) {
+        $("login-error").textContent = data.error;
+        $("login-error").style.display = "block";
+        return;
+      }
+
+      if (isRegister) {
+        showLogin();
+        $("login-error").textContent = "Account created! Please sign in.";
+        $("login-error").style.display = "block";
+        $("login-error").style.color = "#66bb6a";
+        return;
+      }
+
+      token = data.token;
+      username = user;
+      localStorage.setItem("token", token);
+      localStorage.setItem("username", username);
+      showApp();
+    });
+
+    function showApp() {
+      $("login-page").style.display = "none";
+      $("app").style.display = "block";
+      $("display-user").textContent = username;
+      load();
+    }
+
+    function logout() {
+      token = null;
+      username = null;
+      localStorage.removeItem("token");
+      localStorage.removeItem("username");
+      $("login-page").style.display = "flex";
+      $("app").style.display = "none";
+      $("login-error").style.display = "none";
+    }
+
     async function load() {
-      const res = await fetch("/api/dashboard");
+      const res = await fetch("/api/dashboard", { headers: headers() });
+      if (res.status === 401) { logout(); return; }
       const data = await res.json();
 
       $("income").textContent = fmt(data.income);
       $("spent").textContent = fmt(data.totalSpent);
       $("savings").textContent = fmt(data.savings);
 
-      // Chart
-      const max = data.byCategory.length ? Math.max(...data.byCategory.map(c => c.total)) : 1;
+      const max = data.byCategory.length ? Math.max(...data.byCategory.map(c => parseFloat(c.total))) : 1;
       $("chart").innerHTML = data.byCategory.map((c, i) => `
         <div class="chart-bar">
           <div class="label">${c.category}</div>
           <div class="bar-bg">
-            <div class="bar-fill" style="width:${(c.total/max*100).toFixed(1)}%;background:${colors[i % colors.length]}"></div>
-            <span class="bar-amount">${fmt(c.total)}</span>
+            <div class="bar-fill" style="width:${(parseFloat(c.total)/max*100).toFixed(1)}%;background:${colors[i % colors.length]}"></div>
+            <span class="bar-amount">${fmt(parseFloat(c.total))}</span>
           </div>
         </div>
       `).join("") || "<p style='color:#888'>No expenses yet</p>";
 
-      // Table
       $("expenses-body").innerHTML = data.expenses.map(e => `
         <tr class="${e.paid ? 'row-paid' : ''}">
           <td><input type="checkbox" class="paid-check" ${e.paid ? 'checked' : ''} onchange="toggle(${e.id})"></td>
-          <td>${e.date}</td><td>${e.category}</td><td>${e.description}</td>
+          <td>${e.date}</td><td>${e.category}</td><td>${e.description || ''}</td>
           <td>${fmt(e.amount)}</td><td><button class="del-btn" onclick="del(${e.id})">✕</button></td>
         </tr>
       `).join("");
@@ -148,7 +268,7 @@
       e.preventDefault();
       await fetch("/api/expenses", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: headers(),
         body: JSON.stringify({
           category: $("category").value,
           description: $("description").value,
@@ -162,17 +282,18 @@
     });
 
     async function toggle(id) {
-      await fetch(`/api/expenses/${id}/toggle`, { method: "PATCH" });
+      await fetch(`/api/expenses/${id}/toggle`, { method: "PATCH", headers: headers() });
       load();
     }
 
     async function del(id) {
-      await fetch(`/api/expenses/${id}`, { method: "DELETE" });
+      await fetch(`/api/expenses/${id}`, { method: "DELETE", headers: headers() });
       load();
     }
 
+    // Init
     $("date").value = new Date().toISOString().slice(0, 10);
-    load();
+    if (token) { showApp(); } 
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
   </script>
 </body>
